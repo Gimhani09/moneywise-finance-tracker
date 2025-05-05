@@ -14,12 +14,42 @@ model Income {
   amount   Float
   date     DateTime @default(now())
   source   String
+  // Removing the user relation since user_id doesn't exist in the database
 }
 
 model User {
-  id       String @id @default(uuid())
-  email    String @unique
-  password String
+  id          String        @id @default(uuid())
+  email       String        @unique
+  password    String
+  // Remove the incomes relation since there's no foreign key in the Income table
+  incomeGoals IncomeGoal[]
+  transactions Transaction[]
+}
+
+model IncomeGoal {
+  id          String   @id @default(uuid())
+  name        String
+  targetAmount Float
+  startDate   DateTime
+  endDate     DateTime
+  userId      String   @map("user_id")
+  user        User     @relation(fields: [userId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// Add the transactions table that already exists in your database
+model Transaction {
+  id       String   @id @default(uuid())
+  category String
+  amount   Float
+  date     DateTime @default(now())
+  userId   String?  @map("user_id")
+  user     User?    @relation(fields: [userId], references: [id])
+
+  @@index([category])
+  @@index([date])
+  @@index([userId])
 }
 
 model RecurringBill {

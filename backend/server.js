@@ -3,6 +3,7 @@ const express = require("express");
 const cors = require("cors");
 
 const incomeRoutes = require("./routes/incomeRoutes"); // ✅ Import Income Routes
+const incomeGoalRoutes = require("./routes/incomeGoalRoutes"); // ✅ Import Income Goal Routes
 
 const app = express();
 app.use(cors());
@@ -15,6 +16,8 @@ app.get("/", (req, res) => {
 
 // ✅ Use Income Routes
 app.use("/income", incomeRoutes);
+// ✅ Use Income Goal Routes
+app.use("/income-goals", incomeGoalRoutes);
 
 // 🚨 Error Handling Middleware (Add this)
 app.use((err, req, res, next) => {
