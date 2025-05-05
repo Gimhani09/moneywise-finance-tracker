@@ -23,10 +23,10 @@
       "static/chunks/main-app.js",
       "static/chunks/app/income/chart/page.js"
     ],
-    "/_not-found/page": [
+    "/income/goal/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/_not-found/page.js"
+      "static/chunks/app/income/goal/page.js"
     ]
   }
 }
