@@ -12,17 +12,6 @@
       "static/css/app/page.css",
       "static/chunks/app/page.js"
     ],
-    "/income/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/css/app/income/page.css",
-      "static/chunks/app/income/page.js"
-    ],
-    "/income/chart/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/income/chart/page.js"
-    ],
     "/income/goal/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
