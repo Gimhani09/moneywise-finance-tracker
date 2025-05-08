@@ -8,6 +8,20 @@ const setupIncomeGoalTable = async () => {
     // Check if the table exists by trying to query it
     await prisma.$queryRaw`SELECT 1 FROM "IncomeGoal" LIMIT 1`;
     console.log("✅ IncomeGoal table already exists");
+    
+    // Check if currentAmount column exists
+    try {
+      await prisma.$queryRaw`SELECT "currentAmount" FROM "IncomeGoal" LIMIT 1`;
+      console.log("✅ currentAmount column already exists");
+    } catch (columnError) {
+      console.log("⚙️ Adding currentAmount column to IncomeGoal table...");
+      try {
+        await prisma.$executeRaw`ALTER TABLE "IncomeGoal" ADD COLUMN IF NOT EXISTS "currentAmount" DOUBLE PRECISION NOT NULL DEFAULT 0`;
+        console.log("✅ currentAmount column added successfully");
+      } catch (addColumnError) {
+        console.error("❌ Failed to add currentAmount column:", addColumnError.message);
+      }
+    }
   } catch (error) {
     // If the table doesn't exist, create it
     console.log("⚙️ Setting up IncomeGoal table...");
@@ -17,6 +31,7 @@ const setupIncomeGoalTable = async () => {
           "id" TEXT NOT NULL,
           "name" TEXT NOT NULL,
           "targetAmount" DOUBLE PRECISION NOT NULL,
+          "currentAmount" DOUBLE PRECISION NOT NULL DEFAULT 0,
           "startDate" TIMESTAMP(3) NOT NULL,
           "endDate" TIMESTAMP(3) NOT NULL,
           "user_id" TEXT NOT NULL,
@@ -74,43 +89,86 @@ const generateUUID = () => {
 // Direct database query to get all user income goals
 const getUserIncomeGoalsRaw = async (userId) => {
   try {
+    console.log(`Fetching goals from database for user: ${userId}`);
+    
+    // Even for mock user, we want to return actual stored goals
     const result = await prisma.$queryRaw`
       SELECT 
-        id, name, "targetAmount", "startDate", "endDate", user_id as "userId", 
+        id, name, "targetAmount", "currentAmount", "startDate", "endDate", user_id as "userId", 
         "createdAt", "updatedAt"
       FROM "IncomeGoal"
       WHERE user_id = ${userId}
       ORDER BY "createdAt" DESC
     `;
+    
+    console.log(`Found ${result.length} goals for user ${userId}`);
     return result;
   } catch (error) {
     console.error("❌ Direct query error:", error.message);
-    throw error;
+    console.error(error);
+    // Return empty array instead of failing to prevent UI errors
+    return [];
   }
 };
 
 // Direct database query to add an income goal
 const addIncomeGoalRaw = async (data) => {
-  const { name, targetAmount, startDate, endDate, userId } = data;
+  const { name, targetAmount, currentAmount = 0, startDate, endDate, userId } = data;
   const id = generateUUID();
   const now = new Date();
   
   try {
-    await prisma.$executeRaw`
-      INSERT INTO "IncomeGoal" (id, name, "targetAmount", "startDate", "endDate", user_id, "createdAt", "updatedAt")
-      VALUES (${id}, ${name}, ${targetAmount}, ${new Date(startDate)}, ${new Date(endDate)}, ${userId}, ${now}, ${now})
-    `;
+    // Parse dates properly, handling both ISO string format and date-only format
+    const parsedStartDate = new Date(startDate);
+    const parsedEndDate = new Date(endDate);
     
-    return {
-      id,
-      name,
-      targetAmount,
-      startDate: new Date(startDate),
-      endDate: new Date(endDate),
-      userId,
-      createdAt: now,
-      updatedAt: now
-    };
+    console.log(`Adding new goal to database: "${name}" with target $${targetAmount} from ${parsedStartDate.toISOString()} to ${parsedEndDate.toISOString()}`);
+    
+    // Check if this is the mock user ID used in development
+    const isMockUser = userId === '123e4567-e89b-12d3-a456-426614174000';
+    
+    // For simplicity in development, use raw SQL to directly insert
+    console.log("Using direct SQL insert to bypass constraints");
+    
+    try {
+      // First, try to create a user record if it doesn't exist (for development only)
+      if (isMockUser) {
+        await prisma.$executeRaw`
+          INSERT INTO "User" (id, email, name, "createdAt", "updatedAt") 
+          VALUES (${userId}, 'mock@example.com', 'Mock User', ${now}, ${now})
+          ON CONFLICT (id) DO NOTHING
+        `;
+      }
+
+      // Then insert the goal - using explicit SQL to ensure it's added properly
+      await prisma.$executeRaw`
+        INSERT INTO "IncomeGoal" (
+          id, name, "targetAmount", "currentAmount", "startDate", "endDate", 
+          user_id, "createdAt", "updatedAt"
+        )
+        VALUES (
+          ${id}, ${name}, ${parseFloat(targetAmount)}, ${parseFloat(currentAmount)}, 
+          ${parsedStartDate}, ${parsedEndDate}, ${userId}, ${now}, ${now}
+        )
+      `;
+      
+      console.log("✅ Goal added successfully with ID:", id);
+      
+      return {
+        id,
+        name,
+        targetAmount: parseFloat(targetAmount),
+        currentAmount: parseFloat(currentAmount),
+        startDate: parsedStartDate,
+        endDate: parsedEndDate,
+        userId,
+        createdAt: now,
+        updatedAt: now
+      };
+    } catch (error) {
+      console.error("❌ Error during direct insert:", error);
+      throw error;
+    }
   } catch (error) {
     console.error("❌ Direct insert error:", error.message);
     throw error;
@@ -119,7 +177,7 @@ const addIncomeGoalRaw = async (data) => {
 
 // Direct database query to update an income goal
 const updateIncomeGoalRaw = async (id, data) => {
-  const { name, targetAmount, startDate, endDate } = data;
+  const { name, targetAmount, currentAmount, startDate, endDate } = data;
   const now = new Date();
   
   try {
@@ -127,7 +185,8 @@ const updateIncomeGoalRaw = async (id, data) => {
       UPDATE "IncomeGoal" 
       SET 
         name = ${name}, 
-        "targetAmount" = ${targetAmount}, 
+        "targetAmount" = ${targetAmount},
+        "currentAmount" = ${currentAmount || 0}, 
         "startDate" = ${new Date(startDate)}, 
         "endDate" = ${new Date(endDate)}, 
         "updatedAt" = ${now}
@@ -136,7 +195,7 @@ const updateIncomeGoalRaw = async (id, data) => {
     
     const result = await prisma.$queryRaw`
       SELECT 
-        id, name, "targetAmount", "startDate", "endDate", user_id as "userId", 
+        id, name, "targetAmount", "currentAmount", "startDate", "endDate", user_id as "userId", 
         "createdAt", "updatedAt"
       FROM "IncomeGoal"
       WHERE id = ${id}
@@ -169,7 +228,7 @@ const getGoalProgressRaw = async (id) => {
     // Get the goal details
     const goalResult = await prisma.$queryRaw`
       SELECT 
-        id, name, "targetAmount", "startDate", "endDate", user_id as "userId"
+        id, name, "targetAmount", "currentAmount", "startDate", "endDate", user_id as "userId"
       FROM "IncomeGoal"
       WHERE id = ${id}
     `;
@@ -180,22 +239,15 @@ const getGoalProgressRaw = async (id) => {
     
     const goal = goalResult[0];
     
-    // Get all income within the goal period (note: we don't filter by user_id since it might not exist)
-    const incomeResult = await prisma.$queryRaw`
-      SELECT SUM(amount) as "totalIncome"
-      FROM "Income"
-      WHERE date >= ${goal.startDate}
-      AND date <= ${goal.endDate}
-    `;
-    
-    const totalIncome = parseFloat(incomeResult[0]?.totalIncome || 0);
-    const progressPercentage = Math.min(Math.round((totalIncome / goal.targetAmount) * 100), 100);
+    // We'll use the currentAmount stored in the database instead of calculating from income
+    const currentAmount = parseFloat(goal.currentAmount || 0);
+    const progressPercentage = Math.min(Math.round((currentAmount / goal.targetAmount) * 100), 100);
     
     return {
       goalId: goal.id,
       name: goal.name,
       targetAmount: parseFloat(goal.targetAmount),
-      currentAmount: totalIncome,
+      currentAmount: currentAmount,
       progressPercentage,
       startDate: goal.startDate,
       endDate: goal.endDate
@@ -226,13 +278,39 @@ const getUserIncomeGoals = async (req, res) => {
 
 // 📌 ADD new income goal
 const addIncomeGoal = async (req, res) => {
-  const { name, targetAmount, startDate, endDate, userId } = req.body;
   try {
+    // Log the incoming request body for debugging
+    console.log("📥 Received income goal data:", req.body);
+    
+    const { name, targetAmount, currentAmount = 0, startDate, endDate, userId } = req.body;
+    
+    // Validate input data
+    if (!name || name.trim() === '') {
+      return res.status(400).json({ error: "Name is required" });
+    }
+    
+    if (!targetAmount || isNaN(parseFloat(targetAmount)) || parseFloat(targetAmount) <= 0) {
+      return res.status(400).json({ error: "Target amount must be a positive number" });
+    }
+    
+    if (!startDate) {
+      return res.status(400).json({ error: "Start date is required" });
+    }
+    
+    if (!endDate) {
+      return res.status(400).json({ error: "End date is required" });
+    }
+    
+    if (!userId) {
+      return res.status(400).json({ error: "User ID is required" });
+    }
+    
     // Use direct SQL query by default due to Prisma schema issues
     console.log("Using direct SQL query for adding goal");
     const newGoal = await addIncomeGoalRaw({
       name,
       targetAmount: parseFloat(targetAmount),
+      currentAmount: parseFloat(currentAmount),
       startDate,
       endDate,
       userId
@@ -248,13 +326,14 @@ const addIncomeGoal = async (req, res) => {
 // 📌 UPDATE income goal
 const updateIncomeGoal = async (req, res) => {
   const { id } = req.params;
-  const { name, targetAmount, startDate, endDate } = req.body;
+  const { name, targetAmount, currentAmount = 0, startDate, endDate } = req.body;
   try {
     // Use direct SQL query by default due to Prisma schema issues
     console.log("Using direct SQL query for updating goal");
     const updatedGoal = await updateIncomeGoalRaw(id, {
       name,
       targetAmount: parseFloat(targetAmount),
+      currentAmount: parseFloat(currentAmount),
       startDate,
       endDate
     });
