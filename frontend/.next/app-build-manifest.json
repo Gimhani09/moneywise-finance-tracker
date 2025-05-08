@@ -26,6 +26,7 @@
     "/income/goal/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
+      "static/css/app/income/goal/page.css",
       "static/chunks/app/income/goal/page.js"
     ]
   }
